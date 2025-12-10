@@ -1,0 +1,17 @@
+{
+	"name": "flxgif",
+	"url": "https://github.com/MAJigsaw77/flxgif",
+	"license": "MIT",
+	"tags": [
+		"haxe",
+		"gif",
+		"haxeflixel"
+	],
+	"description": "Yagp's Gif Player for HaxeFlixel.",
+	"version": "1.0.3",
+	"releasenote": "Added FlxGifBackdrop.",
+	"contributors": [
+		"MAJigsaw77"
+	],
+	"classPath": "source"
+}
