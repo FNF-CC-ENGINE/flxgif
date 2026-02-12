@@ -33,7 +33,6 @@ class FlxGifSprite extends FlxSprite
 	public var performanceMode:Bool = false;
 	public var targetFPS:Float = 30.0;
 	public var skipFrames:Bool = false;
-	public var forceCache:Bool = true;
 	
 	/**
 	 * Whether to apply performance optimizations automatically based on GIF size.
@@ -106,10 +105,8 @@ class FlxGifSprite extends FlxSprite
 			// Auto-detect if we should enable performance mode
 			if (autoPerformanceMode && gifData != null) {
 				var totalPixels = gifData.width * gifData.height * gifData.frames.length;
-				if (totalPixels > autoPerformanceThreshold) {
-					performanceMode = true;
-					forceCache = true;
-				}
+
+				performanceMode = totalPixels > autoPerformanceThreshold;
 			}
 			
 			player = new GifPlayer(gifData);
@@ -119,7 +116,6 @@ class FlxGifSprite extends FlxSprite
 				player.performanceMode = performanceMode;
 				player.targetFPS = targetFPS;
 				player.skipFrames = skipFrames;
-				player.forceCache = forceCache;
 			}
 
 			loadGraphic(FlxGraphic.fromBitmapData(player.data, false, null, false));
@@ -150,7 +146,6 @@ class FlxGifSprite extends FlxSprite
 		this.performanceMode = options.performanceMode;
 		this.targetFPS = options.targetFPS;
 		this.skipFrames = options.skipFrames;
-		this.forceCache = options.forceCache;
 		this.autoPerformanceMode = options.autoPerformanceMode;
 		
 		if (options.autoPerformanceThreshold != null) {
@@ -162,7 +157,6 @@ class FlxGifSprite extends FlxSprite
 			player.performanceMode = performanceMode;
 			player.targetFPS = targetFPS;
 			player.skipFrames = skipFrames;
-			player.forceCache = forceCache;
 		}
 	}
 	
@@ -172,25 +166,21 @@ class FlxGifSprite extends FlxSprite
 	 * @param performanceMode Enable performance optimizations
 	 * @param targetFPS Target frames per second (default: 30)
 	 * @param skipFrames Skip frames if falling behind
-	 * @param forceCache Force cache usage
 	 */
 	public function setPerformanceSettings(
 		performanceMode:Bool = false,
 		targetFPS:Float = 30.0,
-		skipFrames:Bool = false,
-		forceCache:Bool = true
+		skipFrames:Bool = false
 	):Void
 	{
 		this.performanceMode = performanceMode;
 		this.targetFPS = targetFPS;
 		this.skipFrames = skipFrames;
-		this.forceCache = forceCache;
 		
 		if (player != null) {
 			player.performanceMode = performanceMode;
 			player.targetFPS = targetFPS;
 			player.skipFrames = skipFrames;
-			player.forceCache = forceCache;
 		}
 	}
 	
@@ -270,12 +260,6 @@ typedef GifPerformanceOptions = {
 	var skipFrames:Bool;
 	
 	/**
-	 * Force cache usage for all frames.
-	 * Increases memory usage but improves performance.
-	 */
-	var forceCache:Bool;
-	
-	/**
 	 * Automatically enable performance mode based on GIF size.
 	 */
 	var autoPerformanceMode:Bool;
@@ -297,7 +281,7 @@ class GifPerformanceProfiles
 	 * Uses maximum quality with 60 FPS target.
 	 */
 	public static var HIGH:Array<Dynamic> = [
-		{performanceMode: false, targetFPS: 60.0, skipFrames: false, forceCache: true, autoPerformanceMode: false}
+		{performanceMode: false, targetFPS: 60.0, skipFrames: false, autoPerformanceMode: false}
 	];
 	
 	/**
@@ -305,7 +289,7 @@ class GifPerformanceProfiles
 	 * Good balance between quality and performance.
 	 */
 	public static var BALANCED:Array<Dynamic> = [
-		{performanceMode: true, targetFPS: 30.0, skipFrames: false, forceCache: true, autoPerformanceMode: true, autoPerformanceThreshold: 500000}
+		{performanceMode: true, targetFPS: 30.0, skipFrames: false, autoPerformanceMode: true, autoPerformanceThreshold: 500000}
 	];
 	
 	/**
@@ -313,7 +297,7 @@ class GifPerformanceProfiles
 	 * Prioritizes smooth playback over visual quality.
 	 */
 	public static var LOW:Array<Dynamic> = [
-		{performanceMode: true, targetFPS: 20.0, skipFrames: true, forceCache: true, autoPerformanceMode: true, autoPerformanceThreshold: 250000}
+		{performanceMode: true, targetFPS: 20.0, skipFrames: true, autoPerformanceMode: true, autoPerformanceThreshold: 250000}
 	];
 	
 	/**
@@ -321,6 +305,6 @@ class GifPerformanceProfiles
 	 * Maximum performance optimizations.
 	 */
 	public static var ULTRA_PERFORMANCE:Array<Dynamic> = [
-		{performanceMode: true, targetFPS: 15.0, skipFrames: true, forceCache: true, autoPerformanceMode: true, autoPerformanceThreshold: 100000}
+		{performanceMode: true, targetFPS: 15.0, skipFrames: true, autoPerformanceMode: true, autoPerformanceThreshold: 100000}
 	];
 }

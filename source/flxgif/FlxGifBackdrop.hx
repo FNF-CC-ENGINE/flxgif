@@ -39,7 +39,6 @@ class FlxGifBackdrop extends FlxBackdrop
 	public var performanceMode:Bool = false;
 	public var targetFPS:Float = 30.0;
 	public var skipFrames:Bool = false;
-	public var forceCache:Bool = true;
 	
 	/**
 	 * Whether to apply performance optimizations automatically based on GIF size.
@@ -121,10 +120,8 @@ class FlxGifBackdrop extends FlxBackdrop
 			// Auto-detect if we should enable performance mode
 			if (autoPerformanceMode && gifData != null) {
 				var totalPixels = gifData.width * gifData.height * gifData.frames.length;
-				if (totalPixels > autoPerformanceThreshold) {
-					performanceMode = true;
-					forceCache = true;
-				}
+
+				performanceMode = totalPixels > autoPerformanceThreshold;
 			}
 			
 			player = new GifPlayer(gifData);
@@ -134,7 +131,6 @@ class FlxGifBackdrop extends FlxBackdrop
 				player.performanceMode = performanceMode;
 				player.targetFPS = targetFPS;
 				player.skipFrames = skipFrames;
-				player.forceCache = forceCache;
 			}
 
 			loadGraphic(FlxGraphic.fromBitmapData(player.data, false, null, false));
@@ -165,7 +161,6 @@ class FlxGifBackdrop extends FlxBackdrop
 		this.performanceMode = options.performanceMode;
 		this.targetFPS = options.targetFPS;
 		this.skipFrames = options.skipFrames;
-		this.forceCache = options.forceCache;
 		this.autoPerformanceMode = options.autoPerformanceMode;
 		
 		if (options.autoPerformanceThreshold != null) {
@@ -177,7 +172,6 @@ class FlxGifBackdrop extends FlxBackdrop
 			player.performanceMode = performanceMode;
 			player.targetFPS = targetFPS;
 			player.skipFrames = skipFrames;
-			player.forceCache = forceCache;
 		}
 	}
 	
@@ -187,25 +181,21 @@ class FlxGifBackdrop extends FlxBackdrop
 	 * @param performanceMode Enable performance optimizations
 	 * @param targetFPS Target frames per second (default: 30)
 	 * @param skipFrames Skip frames if falling behind
-	 * @param forceCache Force cache usage
 	 */
 	public function setPerformanceSettings(
 		performanceMode:Bool = false,
 		targetFPS:Float = 30.0,
-		skipFrames:Bool = false,
-		forceCache:Bool = true
+		skipFrames:Bool = false
 	):Void
 	{
 		this.performanceMode = performanceMode;
 		this.targetFPS = targetFPS;
 		this.skipFrames = skipFrames;
-		this.forceCache = forceCache;
 		
 		if (player != null) {
 			player.performanceMode = performanceMode;
 			player.targetFPS = targetFPS;
 			player.skipFrames = skipFrames;
-			player.forceCache = forceCache;
 		}
 	}
 	
