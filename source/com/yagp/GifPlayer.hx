@@ -49,6 +49,7 @@ class GifPlayer
 	public var framesCount(get, never):Int;
 	public var tilemap(default, null):Tilemap;
 	public var useHardware(default, set):Bool = true;
+	public var speed(get, set):Float;
 
 	private var _gif:Null<Gif>;
 	private var _frames:Array<GifFrame>;
@@ -58,6 +59,7 @@ class GifPlayer
 	private var _loops = 0;
 	private var _maxLoops = 0;
 	private var _t = 0.0;
+	private var _speed:Float = 1.0;
 	private var _cachedFrames:IntMap<BitmapData>;
 	private var _cacheDirty = true;
 	private var _frameDelays:Array<Float>;
@@ -77,6 +79,7 @@ class GifPlayer
 		_cachedFrames = new IntMap<BitmapData>();
 		_frameBudget = 1000.0 / targetFPS;
 		_hardwareAvailable = #if (openfl >= "7.0.0") true #else false #end;
+		_speed = 1.0;
 		this.gif = gif;
 	}
 
@@ -115,6 +118,54 @@ class GifPlayer
 
 		rebuildRenderer();
 		return v;
+	}
+
+	private inline function get_framesCount():Int
+		return _frames != null ? _frames.length : 0;
+
+	private inline function get_frame():Int return _currFrame;
+	private function set_frame(v:Int):Int
+	{
+		if (_gif == null) return v;
+		v = Std.int(Math.max(0, Math.min(v, _frames.length - 1)));
+		if (_currFrame == v) return v;
+		_t = 0;
+		if (v == _currFrame + 1) renderNext();
+		else
+		{
+			if (useHardware && tilemap != null)
+			{
+				#if (openfl >= "7.0.0")
+				_hardwareTile.id = v;
+				updateDataFromTilemap();
+				#end
+				_currFrame = v;
+				_currGifFrame = _frames[v];
+			}
+			else if (_cachedFrames.exists(v) && !_cacheDirty)
+			{
+				data.copyPixels(_cachedFrames.get(v), _cachedFrames.get(v).rect, point);
+				_currFrame = v;
+				_currGifFrame = _frames[v];
+			}
+			else
+			{
+				data.fillRect(data.rect, 0);
+				if (_prevData != null) { _prevData.dispose(); _prevData = null; }
+				_currFrame = 0;
+				_currGifFrame = _frames[0];
+				renderFrame(0);
+				while (_currFrame != v) renderNext();
+			}
+		}
+		return _currFrame;
+	}
+
+	private inline function get_speed():Float return _speed;
+	private function set_speed(v:Float):Float
+	{
+		_speed = v <= 0 ? 0.0001 : v;
+		return _speed;
 	}
 
 	private function rebuildRenderer():Void
@@ -193,47 +244,6 @@ class GifPlayer
 			_spriteRects[i] = new Rectangle(0, i * h, _gif.width, h);
 	}
 
-	private inline function get_framesCount():Int
-		return _frames != null ? _frames.length : 0;
-
-	private inline function get_frame():Int return _currFrame;
-	private function set_frame(v:Int):Int
-	{
-		if (_gif == null) return v;
-		v = Std.int(Math.max(0, Math.min(v, _frames.length - 1)));
-		if (_currFrame == v) return v;
-		_t = 0;
-		if (v == _currFrame + 1) renderNext();
-		else
-		{
-			if (useHardware && tilemap != null)
-			{
-				#if (openfl >= "7.0.0")
-				_hardwareTile.id = v;
-				updateDataFromTilemap();
-				#end
-				_currFrame = v;
-				_currGifFrame = _frames[v];
-			}
-			else if (_cachedFrames.exists(v) && !_cacheDirty)
-			{
-				data.copyPixels(_cachedFrames.get(v), _cachedFrames.get(v).rect, point);
-				_currFrame = v;
-				_currGifFrame = _frames[v];
-			}
-			else
-			{
-				data.fillRect(data.rect, 0);
-				if (_prevData != null) { _prevData.dispose(); _prevData = null; }
-				_currFrame = 0;
-				_currGifFrame = _frames[0];
-				renderFrame(0);
-				while (_currFrame != v) renderNext();
-			}
-		}
-		return _currFrame;
-	}
-
 	public function update(elapsed:Float):Void
 	{
 		if (!playing || _gif == null || _frames == null) return;
@@ -244,8 +254,9 @@ class GifPlayer
 	private function updateNormal(elapsed:Float):Void
 	{
 		_t += elapsed * 1000;
-		var delay = _currGifFrame.delay;
-		if (_t < delay) return;
+		
+		var effectiveDelay = _currGifFrame.delay / _speed;
+		if (_t < effectiveDelay) return;
 
 		if (useHardware && tilemap != null)
 		{
@@ -257,9 +268,9 @@ class GifPlayer
 			var acc = _t;
 			var target = _currFrame;
 			var loops = _loops;
-			while (acc >= _frames[target].delay)
+			while (acc >= _frames[target].delay / _speed)
 			{
-				acc -= _frames[target].delay;
+				acc -= _frames[target].delay / _speed;
 				target++;
 				if (target >= _frames.length)
 				{
@@ -269,7 +280,7 @@ class GifPlayer
 					{
 						playing = false;
 						_loops = _maxLoops;
-						_t = _currGifFrame.delay;
+						_t = _currGifFrame.delay / _speed;
 						if (animationEndHandler != null) animationEndHandler();
 						return;
 					}
@@ -302,14 +313,14 @@ class GifPlayer
 		_perfTimer = 0;
 		_t += elapsed * 1000;
 
-		if (skipFrames && _t > _currGifFrame.delay * 2)
+		if (skipFrames && _t > (_currGifFrame.delay / _speed) * 2)
 		{
 			var target = _currFrame;
 			var loops = _loops;
 			var time = _t;
-			while (time >= _frames[target].delay)
+			while (time >= _frames[target].delay / _speed)
 			{
-				time -= _frames[target].delay;
+				time -= _frames[target].delay / _speed;
 				target++;
 				if (target >= _frames.length)
 				{
@@ -348,7 +359,7 @@ class GifPlayer
 				}
 			}
 		}
-		else if (_t >= _currGifFrame.delay)
+		else if (_t >= _currGifFrame.delay / _speed)
 		{
 			_t = 0;
 			renderNext();
@@ -366,7 +377,7 @@ class GifPlayer
 			{
 				playing = false;
 				_currFrame--;
-				_t = _currGifFrame.delay;
+				_t = _currGifFrame.delay / _speed;
 				if (animationEndHandler != null) animationEndHandler();
 				return;
 			}

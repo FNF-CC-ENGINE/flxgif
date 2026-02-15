@@ -56,6 +56,20 @@ class FlxGifBackdrop extends FlxBackdrop
 	public var autoPerformanceThreshold:Int = 500000; // 500x500 pixels
 
 	/**
+	 * Enables/disables hardware acceleration via Tilemap.
+	 * Default is true (enabled). Disable for large GIFs.
+	 */
+	public var useHardware(get, set):Bool;
+	private var _useHardware:Bool = true;
+
+	/**
+	 * Global speed multiplier for the GIF animation. Default is 1.0 (normal speed).
+	 * Values greater than 1.0 will speed up the animation, while values between 0.0 and 1.0 will slow it down.
+	 */
+	public var speed(get, set):Float;
+	private var _speed:Float = 1.0;
+
+	/**
 	 * Creates an instance of the `FlxGifBackdrop` class, used to create infinitely scrolling gif backgrounds.
 	 *
 	 * @param gif The gif you want to use for the backdrop.
@@ -236,6 +250,30 @@ class FlxGifBackdrop extends FlxBackdrop
 			return player.getPerformanceInfo();
 		}
 		return null;
+	}
+
+	private function get_useHardware():Bool
+	{
+		return _useHardware;
+	}
+
+	private function set_useHardware(value:Bool):Bool
+	{
+		_useHardware = value;
+		if (player != null) player.useHardware = value;
+		return value;
+	}
+
+	private inline function get_speed():Float
+	{
+		return _speed;
+	}
+
+	private function set_speed(v:Float):Float
+	{
+		_speed = v <= 0 ? 0.0001 : v;
+		if (player != null) player.speed = _speed;
+		return _speed;
 	}
 
 	public override function update(elapsed:Float):Void

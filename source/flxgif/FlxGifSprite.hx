@@ -50,6 +50,20 @@ class FlxGifSprite extends FlxSprite
 	public var autoPerformanceThreshold:Int = 500000; // 500x500 pixels
 
 	/**
+	 * Enables/disables hardware acceleration via Tilemap.
+	 * Default is true (enabled). Disable for large GIFs.
+	 */
+	public var useHardware(get, set):Bool;
+	private var _useHardware:Bool = true;
+
+	/**
+	 * Global speed multiplier for the GIF animation. Default is 1.0 (normal speed).
+	 * Values greater than 1.0 will speed up the animation, while values between 0.0 and 1.0 will slow it down.
+	 */
+	public var speed(get, set):Float;
+	private var _speed:Float = 1.0;
+
+	/**
 	 * Creates a `FlxGifSprite` at a specified position with a specified gif.
 	 *
 	 * If none is provided, a 16x16 image of the HaxeFlixel logo is used.
@@ -215,6 +229,30 @@ class FlxGifSprite extends FlxSprite
 		return null;
 	}
 
+	private function get_useHardware():Bool
+	{
+		return _useHardware;
+	}
+
+	private function set_useHardware(value:Bool):Bool
+	{
+		_useHardware = value;
+		if (player != null) player.useHardware = value;
+		return value;
+	}
+
+	private inline function get_speed():Float
+	{
+		return _speed;
+	}
+
+	private function set_speed(v:Float):Float
+	{
+		_speed = v <= 0 ? 0.0001 : v;
+		if (player != null) player.speed = _speed;
+		return _speed;
+	}
+
 	public override function update(elapsed:Float):Void
 	{
 		if (player != null)
@@ -272,42 +310,4 @@ typedef GifPerformanceOptions = {
 	 * GIFs larger than width*height*frames > threshold will auto-enable performance mode.
 	 */
 	@:optional var autoPerformanceThreshold:Int;
-}
-
-/**
- * Helper class for creating predefined performance profiles.
- */
-class GifPerformanceProfiles
-{
-	/**
-	 * High performance profile for modern systems.
-	 * Uses maximum quality with 60 FPS target.
-	 */
-	public static var HIGH:Array<Dynamic> = [
-		{performanceMode: false, targetFPS: 60.0, skipFrames: false, autoPerformanceMode: false}
-	];
-	
-	/**
-	 * Balanced profile for most systems.
-	 * Good balance between quality and performance.
-	 */
-	public static var BALANCED:Array<Dynamic> = [
-		{performanceMode: true, targetFPS: 30.0, skipFrames: false, autoPerformanceMode: true, autoPerformanceThreshold: 500000}
-	];
-	
-	/**
-	 * Performance profile for low-end systems.
-	 * Prioritizes smooth playback over visual quality.
-	 */
-	public static var LOW:Array<Dynamic> = [
-		{performanceMode: true, targetFPS: 20.0, skipFrames: true, autoPerformanceMode: true, autoPerformanceThreshold: 250000}
-	];
-	
-	/**
-	 * Ultra performance profile for very weak hardware.
-	 * Maximum performance optimizations.
-	 */
-	public static var ULTRA_PERFORMANCE:Array<Dynamic> = [
-		{performanceMode: true, targetFPS: 15.0, skipFrames: true, autoPerformanceMode: true, autoPerformanceThreshold: 100000}
-	];
 }
