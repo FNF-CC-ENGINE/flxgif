@@ -9,12 +9,15 @@ import com.yagp.GifRenderer;
 
 import flxgif.FlxGifAsset;
 import flxgif.FlxGifSprite.GifPerformanceOptions;
+import flixel.FlxG;
 import flixel.addons.display.FlxBackdrop;
 import flixel.graphics.FlxGraphic;
 import flixel.util.FlxAxes;
 import flixel.util.FlxDestroyUtil;
 import openfl.utils.Assets;
+import openfl.utils.AssetType;
 import openfl.utils.ByteArray;
+
 import haxe.io.Bytes;
 
 /**
@@ -106,21 +109,35 @@ class FlxGifBackdrop extends FlxBackdrop
 			map = null;
 		}
 
+		function getBytesFromGif(gif:FlxGifAsset):ByteArray {
+			if ((gif is ByteArrayData)) return gif;
+			if ((gif is Bytes)) return ByteArray.fromBytes(gif);
+			
+			var path:String = Std.string(gif);
+			var bytes:ByteArray = Assets.exists(path, AssetType.BINARY) ? Assets.getBytes(path) : null;
+			
+			#if sys
+			if (bytes == null && sys.FileSystem.exists(path))
+				bytes = ByteArray.fromBytes(sys.io.File.getBytes(path));
+			#end
+			
+			if (bytes == null) {
+				FlxG.log.error('Could not load GIF data from: $path');
+				return null;
+			}
+			return bytes;
+		}
+
+		var bytes = getBytesFromGif(gif);
+		if (bytes == null) return this;
+
 		if (!asMap)
 		{
-			var gifData:com.yagp.Gif = null;
-			
-			if ((gif is ByteArrayData))
-				gifData = GifDecoder.parseByteArray(gif);
-			else if ((gif is Bytes))
-				gifData = GifDecoder.parseByteArray(ByteArray.fromBytes(gif));
-			else
-				gifData = GifDecoder.parseByteArray(Assets.getBytes(Std.string(gif)));
+			var gifData = GifDecoder.parseByteArray(bytes);
 			
 			// Auto-detect if we should enable performance mode
 			if (autoPerformanceMode && gifData != null) {
 				var totalPixels = gifData.width * gifData.height * gifData.frames.length;
-
 				performanceMode = totalPixels > autoPerformanceThreshold;
 			}
 			
@@ -137,13 +154,7 @@ class FlxGifBackdrop extends FlxBackdrop
 		}
 		else
 		{
-			if ((gif is ByteArrayData))
-				map = GifRenderer.createMap(GifDecoder.parseByteArray(gif));
-			else if ((gif is Bytes))
-				map = GifRenderer.createMap(GifDecoder.parseByteArray(ByteArray.fromBytes(gif)));
-			else
-				map = GifRenderer.createMap(GifDecoder.parseByteArray(Assets.getBytes(Std.string(gif))));
-
+			map = GifRenderer.createMap(GifDecoder.parseByteArray(bytes));
 			loadGraphic(FlxGraphic.fromBitmapData(map.data, false, null, false), true, map.width, map.height);
 		}
 
