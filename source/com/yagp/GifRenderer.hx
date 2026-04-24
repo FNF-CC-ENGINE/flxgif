@@ -21,7 +21,6 @@
 package com.yagp;
 
 import com.yagp.structs.DisposalMethod;
-import com.yagp.structs.GifFrame;
 import openfl.display.BitmapData;
 import openfl.geom.Point;
 import openfl.geom.Rectangle;
@@ -32,20 +31,19 @@ typedef GifMap =
 	var data:BitmapData;
 	var width:Int;
 	var height:Int;
-	var frames:Array<Int>;
+	var delays:Array<Int>;
 }
 
 class GifRenderer
 {
-	private static var rect = new Rectangle();
-	private static var point = new Point();
+	private static var rect:Rectangle = new Rectangle();
+	private static var point:Point = new Point();
 
 	private var _gif:Gif;
 	private var _canvas:BitmapData;
-	private var _restorer:BitmapData;
-	private var _prevFrame = -1;
+	private var _restore:BitmapData;
 	private var _cached:IntMap<BitmapData>;
-	private var _allCached = false;
+	private var _allCached:Bool = false;
 
 	public function new(gif:Gif)
 	{
@@ -54,157 +52,205 @@ class GifRenderer
 		_cached = new IntMap<BitmapData>();
 	}
 
-	public static function createMap(gif:Gif, vertical = false):GifMap
+	public static function createMap(gif:Gif, vertical:Bool = true):GifMap
 	{
 		var renderer = new GifRenderer(gif);
 		renderer.cacheAllFrames();
 
-		var fcount = gif.frames.length;
-		var sw = gif.width;
-		var sh = gif.height;
-		var cols = vertical ? 1 : fcount;
-		var rows = vertical ? fcount : 1;
+		var count = gif.frames.length;
+		var frameWidth = gif.width;
+		var frameHeight = gif.height;
 
-		var sheet = new BitmapData(sw * cols, sh * rows, true, 0);
+		var cols = vertical ? 1 : count;
+		var rows = vertical ? count : 1;
+
+		var sheet = new BitmapData(frameWidth * cols, frameHeight * rows, true, 0);
 		sheet.lock();
-		var dx = vertical ? 0 : sw;
-		var dy = vertical ? sh : 0;
-		for (i in 0...fcount)
+
+		for (i in 0...count)
 		{
 			var frame = renderer._cached.get(i);
-			if (frame != null)
-			{
-				point.x = dx * i;
-				point.y = dy * i;
-				sheet.copyPixels(frame, frame.rect, point);
-			}
+			if (frame == null) continue;
+
+			point.setTo(
+				vertical ? 0 : frameWidth * i,
+				vertical ? frameHeight * i : 0
+			);
+
+			sheet.copyPixels(frame, frame.rect, point);
 		}
+
 		sheet.unlock();
 
-		var delays = [];
-		for (f in gif.frames) delays.push(f.delay);
+		var delays:Array<Int> = [];
+		for (frame in gif.frames)
+			delays.push(frame.delay);
+
 		renderer.dispose();
-		return { data: sheet, width: sw, height: sh, frames: delays };
+
+		return {
+			data: sheet,
+			width: frameWidth,
+			height: frameHeight,
+			delays: delays
+		};
 	}
 
-	public function setTarget(target:BitmapData):Void
+	public function render(frame:Int, target:BitmapData, offsetX:Int = 0, offsetY:Int = 0, clearTarget:Bool = false):Void
 	{
-		_canvas.dispose();
-		_canvas = target;
-	}
+		if (_gif == null || target == null) return;
+		if (frame < 0 || frame >= _gif.frames.length) return;
 
-	public function render(frame:Int, offsetX:Int, offsetY:Int):Void
-	{
-		if (_gif == null || frame >= _gif.frames.length || frame < 0) return;
-		ensureFrameCached(frame);
-		if (_cached.exists(frame))
-		{
-			point.x = offsetX;
-			point.y = offsetY;
-			_canvas.copyPixels(_cached.get(frame), _cached.get(frame).rect, point);
-			_prevFrame = frame;
-		}
+		var cached = getCachedFrame(frame);
+		if (cached == null) return;
+
+		if (clearTarget)
+			target.fillRect(target.rect, 0);
+
+		point.setTo(offsetX, offsetY);
+		target.copyPixels(cached, cached.rect, point, null, null, true);
 	}
 
 	public function getCachedFrame(frame:Int):BitmapData
 	{
+		if (_gif == null) return null;
 		if (frame < 0 || frame >= _gif.frames.length) return null;
+
 		ensureFrameCached(frame);
 		return _cached.get(frame);
 	}
 
 	public function cacheAllFrames():Void
 	{
-		if (_allCached) return;
-		var oldTarget = _canvas;
-		var oldPrev = _prevFrame;
-		_canvas = new BitmapData(_gif.width, _gif.height, true, 0);
-		_prevFrame = -1;
+		if (_gif == null || _allCached) return;
+
 		_canvas.lock();
+		_canvas.fillRect(_canvas.rect, 0);
+
 		for (i in 0..._gif.frames.length)
 		{
-			if (_cached.exists(i)) continue;
-			renderSingleFrame(i);
-			var cached = new BitmapData(_gif.width, _gif.height, true, 0);
-			cached.copyPixels(_canvas, _canvas.rect, new Point());
-			_cached.set(i, cached);
-			if (i < _gif.frames.length - 1) applyDisposalMethod(i);
+			if (!_cached.exists(i))
+			{
+				renderSingleFrame(i);
+				cacheCanvas(i);
+			}
+
+			if (i < _gif.frames.length - 1)
+				applyDisposalMethod(i);
 		}
+
 		_canvas.unlock();
-		_canvas.dispose();
-		_canvas = oldTarget;
-		_prevFrame = oldPrev;
 		_allCached = true;
 	}
 
 	private function ensureFrameCached(frame:Int):Void
 	{
 		if (_cached.exists(frame)) return;
+
 		var start = 0;
+
 		for (i in 0...frame)
-			if (_cached.exists(i)) start = i + 1;
+		{
+			if (_cached.exists(i))
+				start = i + 1;
+		}
+
 		if (start > 0)
 		{
-			var last = _cached.get(start - 1);
-			_canvas.copyPixels(last, last.rect, new Point());
-			_prevFrame = start - 1;
+			final previous = _cached.get(start - 1);
+			_canvas.fillRect(_canvas.rect, 0);
+
+			point.setTo(0, 0);
+			_canvas.copyPixels(previous, previous.rect, point);
 		}
 		else
 		{
 			_canvas.fillRect(_canvas.rect, 0);
-			_prevFrame = -1;
 		}
+
 		for (i in start...frame + 1)
 		{
 			renderSingleFrame(i);
-			var cached = new BitmapData(_gif.width, _gif.height, true, 0);
-			cached.copyPixels(_canvas, _canvas.rect, new Point());
-			_cached.set(i, cached);
-			if (i < _gif.frames.length - 1) applyDisposalMethod(i);
+			cacheCanvas(i);
+
+			if (i < _gif.frames.length - 1)
+				applyDisposalMethod(i);
 		}
 	}
 
-	private inline function renderSingleFrame(idx:Int):Void
+	private inline function cacheCanvas(frame:Int):Void
 	{
-		var f = _gif.frames[idx];
-		if (f.disposalMethod == DisposalMethod.RENDER_PREVIOUS)
+		var cached = new BitmapData(_gif.width, _gif.height, true, 0);
+		point.setTo(0, 0);
+		cached.copyPixels(_canvas, _canvas.rect, point);
+		_cached.set(frame, cached);
+	}
+
+	private function renderSingleFrame(index:Int):Void
+	{
+		var frame = _gif.frames[index];
+
+		if (frame.disposalMethod == DisposalMethod.RENDER_PREVIOUS)
 		{
-			if (_restorer != null) _restorer.dispose();
-			rect.setTo(f.x, f.y, f.width, f.height);
-			_restorer = new BitmapData(f.width, f.height, true, 0);
-			_restorer.copyPixels(_canvas, rect, new Point());
+			if (_restore != null)
+				_restore.dispose();
+
+			rect.setTo(frame.x, frame.y, frame.width, frame.height);
+			_restore = new BitmapData(frame.width, frame.height, true, 0);
+			point.setTo(0, 0);
+			_restore.copyPixels(_canvas, rect, point);
 		}
-		point.setTo(f.x, f.y);
-		_canvas.copyPixels(f.data, f.data.rect, point, null, null, true);
-		_prevFrame = idx;
+
+		point.setTo(frame.x, frame.y);
+		_canvas.copyPixels(frame.data, frame.data.rect, point, null, null, true);
 	}
 
-	private inline function applyDisposalMethod(idx:Int):Void
+	private function applyDisposalMethod(index:Int):Void
 	{
-		var f = _gif.frames[idx];
-		switch (f.disposalMethod)
+		var frame = _gif.frames[index];
+
+		switch (frame.disposalMethod)
 		{
 			case DisposalMethod.FILL_BACKGROUND:
-				rect.setTo(f.x, f.y, f.width, f.height);
-				_canvas.fillRect(rect, 0x00000000);
+				rect.setTo(frame.x, frame.y, frame.width, frame.height);
+				_canvas.fillRect(rect, 0);
+
 			case DisposalMethod.RENDER_PREVIOUS:
-				if (_restorer != null)
+				if (_restore != null)
 				{
-					point.setTo(f.x, f.y);
-					_canvas.copyPixels(_restorer, _restorer.rect, point);
-					_restorer.dispose();
-					_restorer = null;
+					point.setTo(frame.x, frame.y);
+					_canvas.copyPixels(_restore, _restore.rect, point);
+					_restore.dispose();
+					_restore = null;
 				}
+
 			default:
 		}
 	}
 
 	public function dispose():Void
 	{
-		if (_restorer != null) { _restorer.dispose(); _restorer = null; }
-		if (_canvas != null) { _canvas.dispose(); _canvas = null; }
-		for (bd in _cached) bd.dispose();
-		_cached.clear();
+		if (_restore != null)
+		{
+			_restore.dispose();
+			_restore = null;
+		}
+
+		if (_canvas != null)
+		{
+			_canvas.dispose();
+			_canvas = null;
+		}
+
+		if (_cached != null)
+		{
+			for (bitmap in _cached)
+				bitmap.dispose();
+
+			_cached.clear();
+			_cached = null;
+		}
+
 		_gif = null;
 	}
 }

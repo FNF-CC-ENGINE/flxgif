@@ -1,84 +1,81 @@
 package flxgif;
 
 #if !flixel_addons
-#error 'Your project must use flixel-addons in order to use this class.'
+#error "Your project must use flixel-addons in order to use this class."
 #end
+
+import com.yagp.Gif;
 import com.yagp.GifDecoder;
+import com.yagp.GifRenderer.GifMap;
 import com.yagp.GifPlayer;
 import com.yagp.GifRenderer;
-
-import flxgif.FlxGifAsset;
-import flxgif.FlxGifSprite.GifPerformanceOptions;
 import flixel.FlxG;
 import flixel.addons.display.FlxBackdrop;
 import flixel.graphics.FlxGraphic;
 import flixel.util.FlxAxes;
 import flixel.util.FlxDestroyUtil;
-import openfl.utils.Assets;
+import haxe.io.Bytes;
 import openfl.utils.AssetType;
+import openfl.utils.Assets;
 import openfl.utils.ByteArray;
 
-import haxe.io.Bytes;
-
 /**
- * `FlxGifBackdrop` is made for showing infinitely scrolling gif backgrounds using FlxBackdrop.
+ * `FlxGifBackdrop` displays scrolling GIF backgrounds using `FlxBackdrop`.
+ *
+ * It supports:
+ * - live mode: animated BitmapData through `GifPlayer`
+ * - map mode: spritesheet playback with original GIF delays
  */
 class FlxGifBackdrop extends FlxBackdrop
 {
 	/**
-	 * The Gif Player (warning: can be `null`).
+	 * Live GIF player. Only used when `asMap == false`.
 	 */
 	public var player(default, null):GifPlayer;
 
 	/**
-	 * The Gif SpriteMap (warning: can be `null`).
+	 * GIF spritemap. Only used when `asMap == true`.
 	 */
 	public var map(default, null):GifMap;
-	
-	/**
-	 * Performance optimization settings for GIF playback.
-	 * These settings help improve performance on low-end hardware.
-	 */
-	public var performanceMode:Bool = false;
-	public var targetFPS:Float = 30.0;
-	public var skipFrames:Bool = false;
-	
-	/**
-	 * Whether to apply performance optimizations automatically based on GIF size.
-	 * If true, large GIFs will automatically enable performance mode.
-	 */
-	public var autoPerformanceMode:Bool = true;
-	
-	/**
-	 * Threshold for automatic performance mode (in pixels).
-	 * GIFs larger than this will automatically enable performance mode.
-	 */
-	public var autoPerformanceThreshold:Int = 500000; // 500x500 pixels
 
 	/**
-	 * Enables/disables hardware acceleration via Tilemap.
-	 * Default is true (enabled). Disable for large GIFs.
-	 */
-	public var useHardware(get, set):Bool;
-	private var _useHardware:Bool = true;
-
-	/**
-	 * Global speed multiplier for the GIF animation. Default is 1.0 (normal speed).
-	 * Values greater than 1.0 will speed up the animation, while values between 0.0 and 1.0 will slow it down.
+	 * Global speed multiplier for GIF playback.
 	 */
 	public var speed(get, set):Float;
 	private var _speed:Float = 1.0;
 
 	/**
-	 * Creates an instance of the `FlxGifBackdrop` class, used to create infinitely scrolling gif backgrounds.
+	 * Whether the backdrop should loop the GIF.
+	 */
+	public var loop:Bool = true;
+
+	/**
+	 * Called when one loop finishes.
+	 */
+	public var loopEndHandler:Void->Void;
+
+	/**
+	 * Called when a non-looping GIF reaches the end.
+	 */
+	public var animationEndHandler:Void->Void;
+
+	private var _gif:Gif;
+	private var _isMapMode:Bool = false;
+	private var _mapFrame:Int = 0;
+	private var _mapTime:Float = 0;
+	private var _mapLoops:Int = 0;
+	private var _mapMaxLoops:Int = 0;
+
+	/**
+	 * Creates a GIF backdrop.
 	 *
-	 * @param gif The gif you want to use for the backdrop.
-	 * @param repeatAxes The axes on which to repeat. The default, `XY` will tile the entire camera.
-	 * @param spacingX Amount of spacing between tiles on the X axis.
-	 * @param spacingY Amount of spacing between tiles on the Y axis.
+	 * @param gif Optional GIF asset to load immediately.
+	 * @param repeatAxes Axes on which to repeat.
+	 * @param spacingX X spacing between repeated tiles.
+	 * @param spacingY Y spacing between repeated tiles.
 	 */
 	#if (flixel_addons >= version("3.2.1"))
-	public function new(?gif:FlxGifAsset, repeatAxes = XY, spacingX = 0.0, spacingY = 0.0):Void
+	public function new(?gif:FlxGifAsset, repeatAxes:FlxAxes = FlxAxes.XY, spacingX = 0.0, spacingY = 0.0):Void
 	{
 		super(repeatAxes, spacingX, spacingY);
 
@@ -86,7 +83,7 @@ class FlxGifBackdrop extends FlxBackdrop
 			loadGif(gif);
 	}
 	#else
-	public function new(?gif:FlxGifAsset, repeatAxes = XY, spacingX = 0, spacingY = 0):Void
+	public function new(?gif:FlxGifAsset, repeatAxes:FlxAxes = FlxAxes.XY, spacingX = 0, spacingY = 0):Void
 	{
 		super(repeatAxes, spacingX, spacingY);
 
@@ -96,21 +93,186 @@ class FlxGifBackdrop extends FlxBackdrop
 	#end
 
 	/**
-	 * Call this function to load a gif.
+	 * Loads a GIF.
 	 *
-	 * @param gif The gif you want to use.
-	 * @param asMap Whether the gif should be loaded as a spritemap to be animated or not.
-	 * @param performanceOptions Optional performance settings for the GIF player.
-	 *                          If not provided, uses current class properties.
-	 *
-	 * @return This `FlxGifBackdrop` instance (nice for chaining stuff together, if you're into that).
+	 * @param gif GIF asset, path, Bytes, or ByteArray.
+	 * @param asMap If true, loads the GIF as a spritesheet. If false, uses live BitmapData playback.
+	 * @return This backdrop.
 	 */
-	public function loadGif(gif:FlxGifAsset, asMap:Bool = false, ?performanceOptions:GifPerformanceOptions):FlxGifBackdrop
+	public function loadGif(gif:FlxGifAsset, asMap:Bool = false):FlxGifBackdrop
 	{
-		if (performanceOptions != null) {
-			applyPerformanceOptions(performanceOptions);
+		clearGif();
+
+		var bytes = getBytesFromGif(gif);
+
+		if (bytes == null)
+			return this;
+
+		try
+		{
+			_gif = GifDecoder.parseByteArray(bytes);
 		}
-		
+		catch (e:Dynamic)
+		{
+			FlxG.log.error('Failed to decode GIF: $e');
+			return this;
+		}
+
+		if (_gif == null || _gif.frames == null || _gif.frames.length == 0)
+		{
+			FlxG.log.error("Decoded GIF has no frames.");
+			return this;
+		}
+
+		_isMapMode = asMap;
+		_mapMaxLoops = _gif.loops;
+
+		if (asMap)
+			loadAsMap(_gif);
+		else
+			loadAsPlayer(_gif);
+
+		return this;
+	}
+
+	/**
+	 * Loads decoded GIF through `GifPlayer`.
+	 */
+	private function loadAsPlayer(gif:Gif):Void
+	{
+		player = new GifPlayer(gif);
+		player.speed = _speed;
+		player.loopEndHandler = loopEndHandler;
+		player.animationEndHandler = animationEndHandler;
+
+		loadGraphic(FlxGraphic.fromBitmapData(player.data, false, null, false));
+		dirty = true;
+	}
+
+	/**
+	 * Loads decoded GIF as a spritesheet.
+	 */
+	private function loadAsMap(gif:Gif):Void
+	{
+		map = GifRenderer.createMap(gif, true);
+
+		loadGraphic(
+			FlxGraphic.fromBitmapData(map.data, false, null, false),
+			true,
+			map.width,
+			map.height
+		);
+
+		var frames = [for (i in 0...map.delays.length) i];
+
+		animation.add("__gif", frames, 30, true);
+		animation.play("__gif");
+
+		_mapFrame = 0;
+		_mapTime = 0;
+		_mapLoops = 0;
+
+		dirty = true;
+	}
+
+	/**
+	 * Reads bytes from supported GIF asset inputs.
+	 */
+	private function getBytesFromGif(gif:FlxGifAsset):ByteArray
+	{
+		var raw:Dynamic = gif;
+
+		if (Std.isOfType(raw, Bytes))
+			return ByteArray.fromBytes(cast raw);
+
+		try
+		{
+			var byteArray:ByteArray = cast raw;
+
+			if (byteArray != null)
+				return byteArray;
+		}
+		catch (e:Dynamic) {}
+
+		var path = Std.string(gif);
+		var bytes:ByteArray = null;
+
+		if (Assets.exists(path, AssetType.BINARY))
+			bytes = Assets.getBytes(path);
+
+		#if sys
+		if (bytes == null && sys.FileSystem.exists(path))
+			bytes = ByteArray.fromBytes(sys.io.File.getBytes(path));
+		#end
+
+		if (bytes == null)
+			FlxG.log.error('Could not load GIF data from: $path');
+
+		return bytes;
+	}
+
+	/**
+	 * Updates GIF playback.
+	 */
+	override public function update(elapsed:Float):Void
+	{
+		if (player != null)
+		{
+			player.update(elapsed);
+			dirty = true;
+		}
+
+		super.update(elapsed);
+	}
+
+	/**
+	 * Resets GIF playback.
+	 */
+	public function resetGif(play:Bool = true):Void
+	{
+		if (player != null)
+		{
+			player.reset(play);
+			dirty = true;
+			return;
+		}
+
+		if (map != null)
+		{
+			_mapFrame = 0;
+			_mapTime = 0;
+			_mapLoops = 0;
+
+			if (animation != null)
+				animation.frameIndex = 0;
+
+			dirty = true;
+		}
+	}
+
+	/**
+	 * Stops GIF playback.
+	 */
+	public function pauseGif():Void
+	{
+		if (player != null)
+			player.playing = false;
+	}
+
+	/**
+	 * Resumes GIF playback.
+	 */
+	public function resumeGif():Void
+	{
+		if (player != null)
+			player.playing = true;
+	}
+
+	/**
+	 * Clears currently loaded GIF resources.
+	 */
+	public function clearGif():Void
+	{
 		if (player != null)
 		{
 			player.dispose(true);
@@ -123,145 +285,12 @@ class FlxGifBackdrop extends FlxBackdrop
 			map = null;
 		}
 
-		function getBytesFromGif(gif:FlxGifAsset):ByteArray {
-			if ((gif is ByteArrayData)) return gif;
-			if ((gif is Bytes)) return ByteArray.fromBytes(gif);
-			
-			var path:String = Std.string(gif);
-			var bytes:ByteArray = Assets.exists(path, AssetType.BINARY) ? Assets.getBytes(path) : null;
-			
-			#if sys
-			if (bytes == null && sys.FileSystem.exists(path))
-				bytes = ByteArray.fromBytes(sys.io.File.getBytes(path));
-			#end
-			
-			if (bytes == null) {
-				FlxG.log.error('Could not load GIF data from: $path');
-				return null;
-			}
-			return bytes;
-		}
-
-		var bytes = getBytesFromGif(gif);
-		if (bytes == null) return this;
-
-		if (!asMap)
-		{
-			var gifData = GifDecoder.parseByteArray(bytes);
-			
-			// Auto-detect if we should enable performance mode
-			if (autoPerformanceMode && gifData != null) {
-				var totalPixels = gifData.width * gifData.height * gifData.frames.length;
-				performanceMode = totalPixels > autoPerformanceThreshold;
-			}
-			
-			player = new GifPlayer(gifData);
-			
-			// Apply performance settings to player
-			if (player != null) {
-				player.performanceMode = performanceMode;
-				player.targetFPS = targetFPS;
-				player.skipFrames = skipFrames;
-			}
-
-			loadGraphic(FlxGraphic.fromBitmapData(player.data, false, null, false));
-		}
-		else
-		{
-			map = GifRenderer.createMap(GifDecoder.parseByteArray(bytes));
-			loadGraphic(FlxGraphic.fromBitmapData(map.data, false, null, false), true, map.width, map.height);
-		}
-
-		return this;
-	}
-	
-	/**
-	 * Apply performance settings to the GIF player.
-	 * This method can be called after loading a GIF to change performance settings.
-	 * 
-	 * @param options Performance options to apply
-	 */
-	public function applyPerformanceOptions(options:GifPerformanceOptions):Void
-	{
-		this.performanceMode = options.performanceMode;
-		this.targetFPS = options.targetFPS;
-		this.skipFrames = options.skipFrames;
-		this.autoPerformanceMode = options.autoPerformanceMode;
-		
-		if (options.autoPerformanceThreshold != null) {
-			this.autoPerformanceThreshold = options.autoPerformanceThreshold;
-		}
-		
-		// Update player if it exists
-		if (player != null) {
-			player.performanceMode = performanceMode;
-			player.targetFPS = targetFPS;
-			player.skipFrames = skipFrames;
-		}
-	}
-	
-	/**
-	 * Set individual performance settings.
-	 * 
-	 * @param performanceMode Enable performance optimizations
-	 * @param targetFPS Target frames per second (default: 30)
-	 * @param skipFrames Skip frames if falling behind
-	 */
-	public function setPerformanceSettings(
-		performanceMode:Bool = false,
-		targetFPS:Float = 30.0,
-		skipFrames:Bool = false
-	):Void
-	{
-		this.performanceMode = performanceMode;
-		this.targetFPS = targetFPS;
-		this.skipFrames = skipFrames;
-		
-		if (player != null) {
-			player.performanceMode = performanceMode;
-			player.targetFPS = targetFPS;
-			player.skipFrames = skipFrames;
-		}
-	}
-	
-	/**
-	 * Enable automatic performance optimization.
-	 * 
-	 * @param enabled Whether to enable auto performance mode
-	 * @param threshold Pixel threshold for auto-enabling (default: 500000)
-	 */
-	public function setAutoPerformance(enabled:Bool = true, ?threshold:Int):Void
-	{
-		this.autoPerformanceMode = enabled;
-		if (threshold != null) {
-			this.autoPerformanceThreshold = threshold;
-		}
-	}
-	
-	/**
-	 * Get current performance statistics.
-	 * Only works when using GifPlayer (not sprite map).
-	 * 
-	 * @return Performance information or null if not available
-	 */
-	public function getPerformanceInfo():Dynamic
-	{
-		if (player != null) {
-			return player.getPerformanceInfo();
-		}
-		return null;
-	}
-
-	private function get_useHardware():Bool
-	{
-		return _useHardware;
-	}
-
-	private function set_useHardware(value:Bool):Bool
-	{
-		_useHardware = value;
-		if (player != null) player.useHardware = value;
-		return value;
+		_gif = null;
+		_isMapMode = false;
+		_mapFrame = 0;
+		_mapTime = 0;
+		_mapLoops = 0;
+		_mapMaxLoops = 0;
 	}
 
 	private inline function get_speed():Float
@@ -269,35 +298,23 @@ class FlxGifBackdrop extends FlxBackdrop
 		return _speed;
 	}
 
-	private function set_speed(v:Float):Float
+	private function set_speed(value:Float):Float
 	{
-		_speed = v <= 0 ? 0.0001 : v;
-		if (player != null) player.speed = _speed;
+		_speed = value <= 0 ? 0.0001 : value;
+
+		if (player != null)
+			player.speed = _speed;
+
 		return _speed;
 	}
 
-	public override function update(elapsed:Float):Void
+	override public function destroy():Void
 	{
-		if (player != null)
-			player.update(elapsed);
+		clearGif();
 
-		super.update(elapsed);
-	}
+		loopEndHandler = null;
+		animationEndHandler = null;
 
-	public override function destroy():Void
-	{
 		super.destroy();
-
-		if (player != null)
-		{
-			player.dispose(true);
-			player = null;
-		}
-
-		if (map != null)
-		{
-			map.data = FlxDestroyUtil.dispose(map.data);
-			map = null;
-		}
 	}
 }
