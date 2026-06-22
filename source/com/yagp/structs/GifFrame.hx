@@ -103,16 +103,7 @@ class GifFrame
     }
     else // Linear copy
     {
-      #if (js && bitfive)
-      // Since OpenFL-bitfive not supports `BitmapData.setVector()`, we're converting vector to ByteArray. Kinda slow, but adding more #ifs just for bitfive will make a mess in the code.
-      var bytes:ByteArray = new ByteArray();
-      bytes.length = pixels.length * 4;
-      for (pixel in pixels) bytes.writeUnsignedInt(pixel);
-      bytes.position = 0;
-      data.setPixels(data.rect, bytes);
-      #else
       data.setVector(data.rect, pixels);
-      #end
     }
     
     // Remove pixels vector

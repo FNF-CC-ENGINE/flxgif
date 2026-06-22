@@ -66,6 +66,8 @@ class FlxGifBackdrop extends FlxBackdrop
 	private var _mapLoops:Int = 0;
 	private var _mapMaxLoops:Int = 0;
 
+	private var _frameGraphics:Array<FlxGraphic>;
+
 	/**
 	 * Creates a GIF backdrop.
 	 *
@@ -145,8 +147,17 @@ class FlxGifBackdrop extends FlxBackdrop
 		player.loopEndHandler = loopEndHandler;
 		player.animationEndHandler = animationEndHandler;
 
-		loadGraphic(FlxGraphic.fromBitmapData(player.data, false, null, false));
-		dirty = true;
+		_frameGraphics = [];
+		for (i in 0...player.framesCount)
+		{
+			var oldFrame = player.frame;
+			player.frame = i;
+			var frameGraphic = FlxGraphic.fromBitmapData(player.data, false, null, false);
+			_frameGraphics.push(frameGraphic);
+			player.frame = oldFrame;
+		}
+
+		this.graphic = _frameGraphics[0];
 	}
 
 	/**
@@ -218,8 +229,13 @@ class FlxGifBackdrop extends FlxBackdrop
 	{
 		if (player != null)
 		{
+			final oldFrame = player.frame;
 			player.update(elapsed);
-			dirty = true;
+			
+			if (player.frame != oldFrame && _frameGraphics != null)
+			{
+				this.graphic = _frameGraphics[player.frame];
+			}
 		}
 
 		super.update(elapsed);
@@ -277,6 +293,15 @@ class FlxGifBackdrop extends FlxBackdrop
 		{
 			player.dispose(true);
 			player = null;
+		}
+
+		if (_frameGraphics != null)
+		{
+			for (g in _frameGraphics)
+			{
+				FlxG.bitmap.remove(g);
+			}
+			_frameGraphics = null;
 		}
 
 		if (map != null)

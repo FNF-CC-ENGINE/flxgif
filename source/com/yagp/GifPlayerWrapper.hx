@@ -169,9 +169,9 @@ class GifPlayerWrapper extends Bitmap
     if (_player == null || stage == null) return;
     var stamp:Float = Timer.stamp();
     _player.update((stamp - _t) * timescale * globalTimescale);
+    
+    this.bitmapData = _player.data;
+    
     _t = stamp;
   }
-  
-  
-  
 }
