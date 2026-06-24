@@ -89,7 +89,7 @@ class FlxGifSprite extends FlxSprite
 	{
 		clearGif();
 
-		var bytes = getBytesFromGif(gif);
+		final bytes = getBytesFromGif(gif);
 
 		if (bytes == null)
 			return this;
@@ -134,14 +134,15 @@ class FlxGifSprite extends FlxSprite
 		_frameGraphics = [];
 		for (i in 0...player.framesCount)
 		{
-			var oldFrame = player.frame;
+			final oldFrame = player.frame;
 			player.frame = i;
-			var frameGraphic = FlxGraphic.fromBitmapData(player.data, false, null, false);
+
+			final frameGraphic = FlxGraphic.fromBitmapData(player.data, false, null, false);
 			_frameGraphics.push(frameGraphic);
 			player.frame = oldFrame;
 		}
 
-		this.graphic = _frameGraphics[0];
+		loadGraphic(_frameGraphics[0]);
 	}
 
 	/**
@@ -160,7 +161,7 @@ class FlxGifSprite extends FlxSprite
 			map.height
 		);
 
-		var frames = [for (i in 0...map.delays.length) i];
+		final frames = [for (i in 0...map.delays.length) i];
 
 		animation.add("__gif", frames, 30, true);
 		animation.play("__gif");
@@ -177,7 +178,7 @@ class FlxGifSprite extends FlxSprite
 	 */
 	private function getBytesFromGif(gif:FlxGifAsset):ByteArray
 	{
-		var raw:Dynamic = gif;
+		final raw:Dynamic = gif;
 
 		if (Std.isOfType(raw, Bytes))
 			return ByteArray.fromBytes(cast raw);
