@@ -21,9 +21,16 @@
 package com.yagp;
 
 import openfl.display.BitmapData;
+import openfl.display.Tile;
+import openfl.display.Tilemap;
+import openfl.display.Tileset;
+import openfl.geom.Point;
+import openfl.geom.Rectangle;
 
 class GifPlayer
 {
+	private static var point:Point = new Point();
+
 	public var data(default, null):BitmapData;
 
 	public var playing:Bool = true;
@@ -37,19 +44,28 @@ class GifPlayer
 	public var framesCount(get, never):Int;
 	public var speed(get, set):Float;
 	public var targetFPS(default, set):Float = 30.0;
+	public var useHardware(default, set):Bool = true;
+
+	public var tilemap(default, null):Tilemap;
 
 	private var _gif:Null<Gif>;
-	private var _renderer:GifRenderer;
+	private var _map:GifRenderer.GifMap;
 	private var _frames:Array<Int>;
-	
 	private var _currFrame:Int = 0;
 	private var _loops:Int = 0;
 	private var _maxLoops:Int = 0;
 	private var _time:Float = 0;
 	private var _speed:Float = 1.0;
 
+	private var _tileset:Tileset;
+	private var _tile:Tile;
+	private var _sheet:BitmapData;
+	private var _rects:Array<Rectangle>;
+	private var _hardwareAvailable:Bool;
+
 	public function new(gif:Null<Gif> = null)
 	{
+		_hardwareAvailable = #if (openfl >= "7.0.0") true #else false #end;
 		this.gif = gif;
 	}
 
@@ -67,13 +83,8 @@ class GifPlayer
 		if (_gif == null)
 			return null;
 
-		_renderer = new GifRenderer(_gif);
-		_renderer.cacheAllFrames();
-
-		_frames = [];
-
-		for (f in _gif.frames)
-			_frames.push(f.delay);
+		_map = GifRenderer.createMap(_gif, true);
+		_frames = _map.delays;
 
 		_currFrame = 0;
 		_loops = 0;
@@ -81,9 +92,41 @@ class GifPlayer
 		_time = 0;
 		playing = true;
 
+		data = new BitmapData(_map.width, _map.height, true, 0);
+
+		buildRenderer();
 		renderCurrentFrame();
 
 		return _gif;
+	}
+
+	private function buildRenderer():Void
+	{
+		_sheet = _map.data;
+		_rects = [];
+
+		for (i in 0..._frames.length)
+			_rects[i] = new Rectangle(0, i * _map.height, _map.width, _map.height);
+
+		if (useHardware)
+			buildTilemap();
+	}
+
+	private function buildTilemap():Void
+	{
+		#if (openfl >= "7.0.0")
+		if (_sheet == null) return;
+
+		_tileset = new Tileset(_sheet);
+
+		for (rect in _rects)
+			_tileset.addRect(rect);
+
+		tilemap = new Tilemap(_map.width, _map.height, _tileset);
+
+		_tile = new Tile(0);
+		tilemap.addTile(_tile);
+		#end
 	}
 
 	private inline function get_framesCount():Int
@@ -125,6 +168,23 @@ class GifPlayer
 		return targetFPS;
 	}
 
+	private function set_useHardware(value:Bool):Bool
+	{
+		useHardware = value && _hardwareAvailable;
+
+		if (_gif != null)
+		{
+			destroyHardware();
+
+			if (useHardware)
+				buildTilemap();
+
+			renderCurrentFrame();
+		}
+
+		return useHardware;
+	}
+
 	public function update(elapsed:Float):Void
 	{
 		if (!playing || _gif == null || _frames == null || _frames.length == 0)
@@ -163,6 +223,7 @@ class GifPlayer
 			if (_maxLoops != 0)
 			{
 				_loops++;
+
 				if (_loops >= _maxLoops)
 				{
 					_currFrame = _frames.length - 1;
@@ -184,10 +245,19 @@ class GifPlayer
 
 	private function renderCurrentFrame():Void
 	{
-		if (data == null || _renderer == null)
+		if (_sheet == null || data == null || _rects == null)
 			return;
 
-		data = _renderer.getCachedFrame(_currFrame);
+		if (useHardware && tilemap != null && _tile != null)
+		{
+			#if (openfl >= "7.0.0")
+			_tile.id = _currFrame;
+			#end
+		}
+
+		data.fillRect(data.rect, 0);
+		point.setTo(0, 0);
+		data.copyPixels(_sheet, _rects[_currFrame], point, null, null, true);
 	}
 
 	public function reset(play:Bool = false):Void
@@ -206,24 +276,41 @@ class GifPlayer
 
 	public function getBitmapFrame(index:Int):BitmapData
 	{
-		if (_renderer == null) return null;
-		
-		var cachedFrame = _renderer.getCachedFrame(index);
-		if (cachedFrame == null) return null;
+		if (_sheet == null || _rects == null) return null;
+		if (index < 0 || index >= _rects.length) return null;
 
-		return cachedFrame.clone();
+		var bitmap = new BitmapData(_map.width, _map.height, true, 0);
+		point.setTo(0, 0);
+		bitmap.copyPixels(_sheet, _rects[index], point);
+		return bitmap;
+	}
+
+	private function destroyHardware():Void
+	{
+		tilemap = null;
+		_tile = null;
+		_tileset = null;
 	}
 
 	private function cleanup():Void
 	{
-		if (_renderer != null)
+		destroyHardware();
+
+		if (data != null)
 		{
-			_renderer.dispose();
-			_renderer = null;
+			data.dispose();
+			data = null;
 		}
 
-		data = null;
+		if (_sheet != null)
+		{
+			_sheet.dispose();
+			_sheet = null;
+		}
+
+		_map = null;
 		_frames = null;
+		_rects = null;
 	}
 
 	public function dispose(disposeGif:Bool = false):Void
