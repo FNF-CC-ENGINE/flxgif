@@ -52,7 +52,7 @@ class GifRenderer
 		_cached = new IntMap<BitmapData>();
 	}
 
-	public static function createMap(gif:Gif, vertical:Bool = true):GifMap
+	public static function createMap(gif:Gif):GifMap
 	{
 		var renderer = new GifRenderer(gif);
 		renderer.cacheAllFrames();
@@ -61,8 +61,8 @@ class GifRenderer
 		var frameWidth = gif.width;
 		var frameHeight = gif.height;
 
-		var cols = vertical ? 1 : count;
-		var rows = vertical ? count : 1;
+		var cols = Math.ceil(Math.sqrt(count));
+		var rows = Math.ceil(count / cols);
 
 		var sheet = new BitmapData(frameWidth * cols, frameHeight * rows, true, 0);
 		sheet.lock();
@@ -72,11 +72,10 @@ class GifRenderer
 			var frame = renderer._cached.get(i);
 			if (frame == null) continue;
 
-			point.setTo(
-				vertical ? 0 : frameWidth * i,
-				vertical ? frameHeight * i : 0
-			);
+			var curCol = i % cols;
+			var curRow = Math.floor(i / cols);
 
+			point.setTo(frameWidth * curCol, frameHeight * curRow);
 			sheet.copyPixels(frame, frame.rect, point);
 		}
 

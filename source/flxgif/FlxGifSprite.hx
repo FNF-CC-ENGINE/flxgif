@@ -140,7 +140,7 @@ class FlxGifSprite extends FlxSprite
 	 */
 	private function loadAsMap(gif:Gif):Void
 	{
-		map = GifRenderer.createMap(gif, true);
+		map = GifRenderer.createMap(gif);
 
 		loadGraphic(
 			FlxGraphic.fromBitmapData(map.data, false, null, false),
@@ -203,8 +203,13 @@ class FlxGifSprite extends FlxSprite
 	{
 		if (player != null)
 		{
+			final oldFrame = player.frame;
 			player.update(elapsed);
-			dirty = true;
+			
+			if (oldFrame != player.frame)
+			{
+				dirty = true;
+			}
 		}
 
 		super.update(elapsed);

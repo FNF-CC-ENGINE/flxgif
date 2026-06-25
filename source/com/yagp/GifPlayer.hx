@@ -21,9 +21,6 @@
 package com.yagp;
 
 import openfl.display.BitmapData;
-import openfl.display.Tile;
-import openfl.display.Tilemap;
-import openfl.display.Tileset;
 import openfl.geom.Point;
 import openfl.geom.Rectangle;
 
@@ -39,56 +36,41 @@ class GifPlayer
 	public var minFrameDelay:Float = 10.0;
 	public var maxFrameAdvance:Int = 4;
 
-	public var gif(get, set):Null<Gif>;
+	public var gif(default, set):Null<Gif>;
 	public var frame(get, set):Int;
 	public var framesCount(get, never):Int;
-	public var speed(get, set):Float;
-	public var targetFPS(default, set):Float = 30.0;
-	public var useHardware(default, set):Bool = true;
+	public var speed(default, set):Float = 1.0;
 
-	public var tilemap(default, null):Tilemap;
-
-	private var _gif:Null<Gif>;
 	private var _map:GifRenderer.GifMap;
 	private var _frames:Array<Int>;
 	private var _currFrame:Int = 0;
 	private var _loops:Int = 0;
 	private var _maxLoops:Int = 0;
 	private var _time:Float = 0;
-	private var _speed:Float = 1.0;
 
-	private var _tileset:Tileset;
-	private var _tile:Tile;
 	private var _sheet:BitmapData;
 	private var _rects:Array<Rectangle>;
-	private var _hardwareAvailable:Bool;
 
 	public function new(gif:Null<Gif> = null)
 	{
-		_hardwareAvailable = #if (openfl >= "7.0.0") true #else false #end;
 		this.gif = gif;
 	}
 
-	private inline function get_gif():Null<Gif>
-		return _gif;
-
 	private function set_gif(value:Null<Gif>):Null<Gif>
 	{
-		if (value == _gif) return value;
+		if (value == gif) return value;
 
 		cleanup();
+		gif = value;
 
-		_gif = value;
+		if (gif == null) return null;
 
-		if (_gif == null)
-			return null;
-
-		_map = GifRenderer.createMap(_gif, true);
+		_map = GifRenderer.createMap(gif);
 		_frames = _map.delays;
 
 		_currFrame = 0;
 		_loops = 0;
-		_maxLoops = _gif.loops;
+		_maxLoops = gif.loops;
 		_time = 0;
 		playing = true;
 
@@ -97,7 +79,7 @@ class GifPlayer
 		buildRenderer();
 		renderCurrentFrame();
 
-		return _gif;
+		return gif;
 	}
 
 	private function buildRenderer():Void
@@ -105,28 +87,20 @@ class GifPlayer
 		_sheet = _map.data;
 		_rects = [];
 
+		final cols = Math.ceil(Math.sqrt(_frames.length));
+
 		for (i in 0..._frames.length)
-			_rects[i] = new Rectangle(0, i * _map.height, _map.width, _map.height);
+		{
+			final curCol = i % cols;
+			final curRow = Math.floor(i / cols);
 
-		if (useHardware)
-			buildTilemap();
-	}
-
-	private function buildTilemap():Void
-	{
-		#if (openfl >= "7.0.0")
-		if (_sheet == null) return;
-
-		_tileset = new Tileset(_sheet);
-
-		for (rect in _rects)
-			_tileset.addRect(rect);
-
-		tilemap = new Tilemap(_map.width, _map.height, _tileset);
-
-		_tile = new Tile(0);
-		tilemap.addTile(_tile);
-		#end
+			_rects[i] = new Rectangle(
+				curCol * _map.width, 
+				curRow * _map.height, 
+				_map.width, 
+				_map.height
+			);
+		}
 	}
 
 	private inline function get_framesCount():Int
@@ -137,78 +111,44 @@ class GifPlayer
 
 	private function set_frame(value:Int):Int
 	{
-		if (_gif == null || _frames == null || _frames.length == 0)
-			return 0;
+		if (gif == null || _frames == null || _frames.length == 0) return 0;
 
-		if (value < 0)
-			value = 0;
-		else if (value >= _frames.length)
-			value = _frames.length - 1;
+		if (value < 0) value = 0;
+		else if (value >= _frames.length) value = _frames.length - 1;
 
 		_currFrame = value;
 		_time = 0;
 
 		renderCurrentFrame();
-
 		return _currFrame;
 	}
 
-	private inline function get_speed():Float
-		return _speed;
-
 	private function set_speed(value:Float):Float
 	{
-		_speed = value <= 0 ? 0.0001 : value;
-		return _speed;
-	}
-
-	private function set_targetFPS(value:Float):Float
-	{
-		targetFPS = value <= 0 ? 1 : value;
-		return targetFPS;
-	}
-
-	private function set_useHardware(value:Bool):Bool
-	{
-		useHardware = value && _hardwareAvailable;
-
-		if (_gif != null)
-		{
-			destroyHardware();
-
-			if (useHardware)
-				buildTilemap();
-
-			renderCurrentFrame();
-		}
-
-		return useHardware;
+		speed = value <= 0 ? 0.0001 : value;
+		return speed;
 	}
 
 	public function update(elapsed:Float):Void
 	{
-		if (!playing || _gif == null || _frames == null || _frames.length == 0)
-			return;
+		if (!playing || gif == null || _frames == null || _frames.length == 0) return;
 
 		_time += elapsed * 1000.0;
-
 		var advanced = 0;
-		var delay = Math.max(minFrameDelay, _frames[_currFrame] / _speed);
 
-		while (_time >= delay && advanced < maxFrameAdvance)
+		while (_time >= Math.max(minFrameDelay, _frames[_currFrame] / speed))
 		{
+			var delay = Math.max(minFrameDelay, _frames[_currFrame] / speed);
 			_time -= delay;
 			nextFrame();
+			
 			advanced++;
-
-			if (!playing)
+			if (advanced >= maxFrameAdvance)
+			{
+				_time = 0;
 				break;
-
-			delay = Math.max(minFrameDelay, _frames[_currFrame] / _speed);
+			}
 		}
-
-		if (advanced >= maxFrameAdvance)
-			_time = 0;
 	}
 
 	private function nextFrame():Void
@@ -217,59 +157,43 @@ class GifPlayer
 
 		if (_currFrame >= _frames.length)
 		{
-			if (loopEndHandler != null)
-				loopEndHandler();
+			if (loopEndHandler != null) loopEndHandler();
 
 			if (_maxLoops != 0)
 			{
 				_loops++;
-
 				if (_loops >= _maxLoops)
 				{
 					_currFrame = _frames.length - 1;
 					playing = false;
 
-					if (animationEndHandler != null)
-						animationEndHandler();
+					if (animationEndHandler != null) animationEndHandler();
 
 					renderCurrentFrame();
 					return;
 				}
 			}
-
 			_currFrame = 0;
 		}
 
 		renderCurrentFrame();
 	}
 
-	private function renderCurrentFrame():Void
+	private inline function renderCurrentFrame():Void
 	{
-		if (_sheet == null || data == null || _rects == null)
-			return;
-
-		if (useHardware && tilemap != null && _tile != null)
-		{
-			#if (openfl >= "7.0.0")
-			_tile.id = _currFrame;
-			#end
-		}
-
-		data.fillRect(data.rect, 0);
-		point.setTo(0, 0);
-		data.copyPixels(_sheet, _rects[_currFrame], point, null, null, true);
+		if (_sheet == null || data == null || _rects == null) return;
+		data.copyPixels(_sheet, _rects[_currFrame], point, null, null, false);
 	}
 
 	public function reset(play:Bool = false):Void
 	{
-		if (_gif == null) return;
+		if (gif == null) return;
 
 		_currFrame = 0;
 		_loops = 0;
 		_time = 0;
 
-		if (play)
-			playing = true;
+		if (play) playing = true;
 
 		renderCurrentFrame();
 	}
@@ -280,22 +204,12 @@ class GifPlayer
 		if (index < 0 || index >= _rects.length) return null;
 
 		var bitmap = new BitmapData(_map.width, _map.height, true, 0);
-		point.setTo(0, 0);
-		bitmap.copyPixels(_sheet, _rects[index], point);
+		bitmap.copyPixels(_sheet, _rects[index], point, null, null, false);
 		return bitmap;
-	}
-
-	private function destroyHardware():Void
-	{
-		tilemap = null;
-		_tile = null;
-		_tileset = null;
 	}
 
 	private function cleanup():Void
 	{
-		destroyHardware();
-
 		if (data != null)
 		{
 			data.dispose();
@@ -315,10 +229,10 @@ class GifPlayer
 
 	public function dispose(disposeGif:Bool = false):Void
 	{
-		if (disposeGif && _gif != null)
-			_gif.dispose();
+		if (disposeGif && gif != null) 
+			gif.dispose();
 
-		_gif = null;
+		gif = null;
 		cleanup();
 
 		loopEndHandler = null;
